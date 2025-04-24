@@ -1,7 +1,7 @@
 {
   "images" : [
     {
-      "filename" : "asphalt-road-1.png",
+      "filename" : "tileRoad.png",
       "idiom" : "universal",
       "scale" : "1x"
     },

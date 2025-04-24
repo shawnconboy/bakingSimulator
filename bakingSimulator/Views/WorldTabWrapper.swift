@@ -4,7 +4,12 @@ import SpriteKit
 struct WorldTabWrapper: View {
     @Binding var isPaused: Bool
 
-    var scene: SKScene {
+    var body: some View {
+        SpriteView(scene: makeScene())
+            .ignoresSafeArea()
+    }
+
+    private func makeScene() -> SKScene {
         let scene = WorldScene()
         scene.size = UIScreen.main.bounds.size
         scene.scaleMode = .resizeFill
@@ -12,10 +17,5 @@ struct WorldTabWrapper: View {
             isPaused = paused
         }
         return scene
-    }
-
-    var body: some View {
-        SpriteView(scene: scene)
-            .ignoresSafeArea()
     }
 }

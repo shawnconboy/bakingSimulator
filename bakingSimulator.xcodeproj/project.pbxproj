@@ -72,7 +72,6 @@
 			children = (
 				661F607A2DB9908A00D6380C /* Resources */,
 				661F601A2DB9818700D6380C /* bakingSimulator */,
-				66C860052DBAB74B00F43BD5 /* Frameworks */,
 				661F60192DB9818700D6380C /* Products */,
 			);
 			sourceTree = "<group>";
@@ -101,13 +100,6 @@
 				661F60792DB9908A00D6380C /* Audio */,
 			);
 			path = Resources;
-			sourceTree = "<group>";
-		};
-		66C860052DBAB74B00F43BD5 /* Frameworks */ = {
-			isa = PBXGroup;
-			children = (
-			);
-			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */

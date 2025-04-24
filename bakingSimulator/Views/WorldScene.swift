@@ -2,7 +2,7 @@ import SpriteKit
 import AVFoundation
 
 class WorldScene: SKScene {
-    var tilemap: SKNode? // Placeholder since SKTiled was removed
+    var tileMap: SKTileMapNode?
     let player = SKSpriteNode(imageNamed: "playerIdle")
     let cameraNode = SKCameraNode()
     var backgroundMusicPlayer: AVAudioPlayer?
@@ -18,30 +18,76 @@ class WorldScene: SKScene {
     var onPauseToggle: ((Bool) -> Void)?
 
     let tileSize: CGFloat = 64
+    let columns: Int = 50
+    let rows: Int = 50
     var moveDirection: CGVector = .zero
 
     override func didMove(to view: SKView) {
         backgroundColor = .black
-
-        // Setup tilemap placeholder
-        tilemap = SKNode()
-        tilemap?.position = CGPoint(x: frame.midX, y: frame.midY)
-        if let tilemap = tilemap {
-            addChild(tilemap)
-        }
-
+        
+        // Set up the scene's anchor point to center
+        anchorPoint = CGPoint(x: 0.5, y: 0.5)
+        
+        setupTileMap()
         setupPlayer()
         setupNPC()
         loadWalkTextures()
         addDpadAndButtons()
 
+        // Set up camera
         camera = cameraNode
         addChild(cameraNode)
+        
+        // Position camera at player's position after setup
         cameraNode.position = player.position
 
         let musicOptions = ["lofi1.mp3", "lofi2.mp3", "lofi3.mp3", "lofi4.mp3"]
         if let randomTrack = musicOptions.randomElement() {
             playBackgroundMusic(filename: randomTrack)
+        }
+    }
+
+    func setupTileMap() {
+        // Create a tile set with our custom tiles
+        let tileSet = SKTileSet()
+        let grassTileGroup = SKTileGroup(tileDefinition: SKTileDefinition(texture: SKTexture(imageNamed: "tileGrass")))
+        let roadTileGroup = SKTileGroup(tileDefinition: SKTileDefinition(texture: SKTexture(imageNamed: "tileRoad")))
+        let sidewalkTileGroup = SKTileGroup(tileDefinition: SKTileDefinition(texture: SKTexture(imageNamed: "tileSidewalk")))
+        
+        tileSet.tileGroups = [grassTileGroup, roadTileGroup, sidewalkTileGroup]
+
+        // Create the tile map
+        let tileMap = SKTileMapNode(tileSet: tileSet, columns: columns, rows: rows, tileSize: CGSize(width: tileSize, height: tileSize))
+        tileMap.anchorPoint = CGPoint(x: 0.5, y: 0.5)
+        tileMap.position = CGPoint(x: 0, y: 0)
+        addChild(tileMap)
+        self.tileMap = tileMap
+
+        // Fill the map with grass as base
+        for column in 0..<columns {
+            for row in 0..<rows {
+                tileMap.setTileGroup(grassTileGroup, forColumn: column, row: row)
+            }
+        }
+
+        // Create a horizontal road through the middle
+        let roadWidth = 2  // Two tiles wide
+        let roadRow = rows / 2  // Middle row
+        for column in 0..<columns {
+            for offset in -roadWidth/2...roadWidth/2 {
+                let row = roadRow + offset
+                if row >= 0 && row < rows {
+                    tileMap.setTileGroup(roadTileGroup, forColumn: column, row: row)
+                }
+            }
+        }
+
+        // Add sidewalk above the road
+        let sidewalkRow = roadRow + roadWidth/2 + 1  // One row above the road
+        for column in 0..<columns {
+            if sidewalkRow >= 0 && sidewalkRow < rows {
+                tileMap.setTileGroup(sidewalkTileGroup, forColumn: column, row: sidewalkRow)
+            }
         }
     }
 
@@ -66,7 +112,8 @@ class WorldScene: SKScene {
     func setupPlayer() {
         player.size = CGSize(width: tileSize, height: tileSize)
         player.texture?.filteringMode = .nearest
-        player.position = CGPoint(x: tileSize * 25 + tileSize / 2, y: tileSize * 23 + tileSize / 2)
+        // Spawn player in the middle of the map, just above the road
+        player.position = CGPoint(x: 0, y: tileSize * 2)  // Center of map, slightly above road
         addChild(player)
     }
 
@@ -76,7 +123,8 @@ class WorldScene: SKScene {
         npc.size = CGSize(width: tileSize, height: tileSize)
         npc.setScale(0.85)
         npc.anchorPoint = CGPoint(x: 0.5, y: 0.5)
-        npc.position = CGPoint(x: tileSize * 25 + tileSize / 2, y: tileSize * 25 + tileSize / 2)
+        // Spawn NPC above the player
+        npc.position = CGPoint(x: tileSize * 2, y: tileSize * 4)  // Slightly to the right and above the player
         addChild(npc)
     }
 
@@ -149,10 +197,32 @@ class WorldScene: SKScene {
         if dx < 0 { player.xScale = -1 }
         if dx > 0 { player.xScale = 1 }
 
-        player.position.x += dx
-        player.position.y += dy
+        // Calculate new position
+        let newX = player.position.x + dx
+        let newY = player.position.y + dy
 
+        // Get map boundaries
+        let mapWidth = CGFloat(tileMap?.numberOfColumns ?? 0) * tileSize
+        let mapHeight = CGFloat(tileMap?.numberOfRows ?? 0) * tileSize
+        let halfMapWidth = mapWidth / 2
+        let halfMapHeight = mapHeight / 2
+        let halfPlayerWidth = player.size.width / 2
+        let halfPlayerHeight = player.size.height / 2
+
+        // Constrain player to map boundaries
+        player.position.x = min(max(newX, -halfMapWidth + halfPlayerWidth), halfMapWidth - halfPlayerWidth)
+        player.position.y = min(max(newY, -halfMapHeight + halfPlayerHeight), halfMapHeight - halfPlayerHeight)
+
+        // Update camera position
         cameraNode.position = player.position
+
+        // Constrain camera to map boundaries
+        let viewSize = view?.bounds.size ?? .zero
+        let halfViewWidth = viewSize.width / 2
+        let halfViewHeight = viewSize.height / 2
+
+        cameraNode.position.x = min(max(cameraNode.position.x, -halfMapWidth + halfViewWidth), halfMapWidth - halfViewWidth)
+        cameraNode.position.y = min(max(cameraNode.position.y, -halfMapHeight + halfViewHeight), halfMapHeight - halfViewHeight)
 
         if dx != 0 || dy != 0 {
             if player.action(forKey: "walk") == nil {
