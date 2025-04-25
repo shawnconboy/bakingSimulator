@@ -15,7 +15,8 @@ class WorldScene: SKScene {
 
     var npc: SKSpriteNode!
     var dialogueBox: SKShapeNode!
-    var promptLabel: SKLabelNode!
+    var promptLabels: [SKLabelNode] = []
+
     var isGamePaused = false
     var onPauseToggle: ((Bool) -> Void)?
 
@@ -32,6 +33,14 @@ class WorldScene: SKScene {
     var isAtDoor: Bool = false
     var houseStartColumn: Int = 0
     var sidewalkRow: Int = 0
+    
+    var stepCount = 0
+    var playerXP: Int {
+        get { UserDefaults.standard.integer(forKey: "playerXP") }
+        set { UserDefaults.standard.set(newValue, forKey: "playerXP") }
+    }
+
+
 
     override func didMove(to view: SKView) {
         backgroundColor = .black
@@ -51,6 +60,24 @@ class WorldScene: SKScene {
         let musicOptions = ["lofi1.mp3", "lofi2.mp3", "lofi3.mp3", "lofi4.mp3"]
         if let randomTrack = musicOptions.randomElement() {
             playBackgroundMusic(filename: randomTrack)
+        }
+
+        if UserDefaults.standard.bool(forKey: "isMusicMuted") {
+            backgroundMusicPlayer?.volume = 0.0
+        }
+    }
+
+    func playBackgroundMusic(filename: String) {
+        if let url = Bundle.main.url(forResource: filename, withExtension: nil) {
+            do {
+                backgroundMusicPlayer = try AVAudioPlayer(contentsOf: url)
+                backgroundMusicPlayer?.numberOfLoops = -1
+                backgroundMusicPlayer?.volume = 0.35
+                backgroundMusicPlayer?.prepareToPlay()
+                backgroundMusicPlayer?.play()
+            } catch {
+                print("\u{274C} Could not load file: \(filename)")
+            }
         }
     }
 
@@ -132,7 +159,8 @@ class WorldScene: SKScene {
             addChild(blocker)
         }
     }
-
+    
+    
     func setupPlayer() {
         player.size = CGSize(width: tileSize, height: tileSize)
         player.texture?.filteringMode = .nearest
@@ -165,7 +193,7 @@ class WorldScene: SKScene {
             "🍞 Use the joystick to move around.",
             "🧁 Press 'A' to interact with characters and objects.",
             "🏠 Head into buildings to explore new areas.",
-            "🎉 Good luck, baker!"
+            "🎉 Good luck, baker! You'll knead it!"
         ]
 
         addChild(npc)
@@ -183,16 +211,56 @@ class WorldScene: SKScene {
         dialogueBox.isHidden = true
         dialogueBox.position = CGPoint(x: 0, y: size.height / 2 - boxHeight - 20)
         cameraNode.addChild(dialogueBox)
-
-        promptLabel = SKLabelNode(fontNamed: "AvenirNext-Bold")
-        promptLabel.fontSize = 18
-        promptLabel.text = ""
-        promptLabel.fontColor = .white
-        promptLabel.position = CGPoint(x: 0, y: -8)
-        promptLabel.zPosition = 100
-        promptLabel.verticalAlignmentMode = .center
-        dialogueBox.addChild(promptLabel)
     }
+
+    func showMultilinePrompt(text: String, fontSize: CGFloat = 18, maxCharsPerLine: Int = 38, verticalPadding: CGFloat = 20) {
+        promptLabels.forEach { $0.removeFromParent() }
+        promptLabels.removeAll()
+
+        // Split into words and wrap manually by character count
+        let words = text.split(separator: " ")
+        var lines: [String] = []
+        var currentLine = ""
+
+        for word in words {
+            if currentLine.count + word.count + 1 <= maxCharsPerLine {
+                currentLine += (currentLine.isEmpty ? "" : " ") + word
+            } else {
+                lines.append(currentLine)
+                currentLine = String(word)
+            }
+        }
+        if !currentLine.isEmpty {
+            lines.append(currentLine)
+        }
+
+        // Sizing
+        let lineHeight = fontSize + 10
+        let contentHeight = CGFloat(lines.count) * lineHeight
+        let boxWidth = CGFloat(maxCharsPerLine) * (fontSize * 0.55) + 40
+        let boxHeight = contentHeight + verticalPadding * 2
+
+        dialogueBox.path = CGPath(roundedRect: CGRect(x: -boxWidth/2, y: -boxHeight/2, width: boxWidth, height: boxHeight), cornerWidth: 12, cornerHeight: 12, transform: nil)
+        dialogueBox.position = CGPoint(x: 0, y: size.height / 2 - boxHeight - 40)
+        dialogueBox.isHidden = false
+
+        for (i, line) in lines.enumerated() {
+            let label = SKLabelNode(fontNamed: "AvenirNext-Bold")
+            label.text = line
+            label.fontColor = .white
+            label.fontSize = fontSize
+            label.horizontalAlignmentMode = .center
+            label.verticalAlignmentMode = .center
+            let yOffset = (CGFloat(lines.count - 1) / 2.0 - CGFloat(i)) * lineHeight
+            label.position = CGPoint(x: 0, y: yOffset)
+            label.zPosition = 100
+            dialogueBox.addChild(label)
+            promptLabels.append(label)
+        }
+    }
+
+
+
 
     func loadWalkTextures() {
         walkFrames = [
@@ -233,19 +301,6 @@ class WorldScene: SKScene {
         cameraNode.addChild(bButtonNode)
     }
 
-    func playBackgroundMusic(filename: String) {
-        if let url = Bundle.main.url(forResource: filename, withExtension: nil) {
-            do {
-                backgroundMusicPlayer = try AVAudioPlayer(contentsOf: url)
-                backgroundMusicPlayer?.numberOfLoops = -1
-                backgroundMusicPlayer?.volume = 0.35
-                backgroundMusicPlayer?.prepareToPlay()
-                backgroundMusicPlayer?.play()
-            } catch {
-                print("❌ Could not load file: \(filename)")
-            }
-        }
-    }
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         for touch in touches {
@@ -267,15 +322,14 @@ class WorldScene: SKScene {
                 if isInteracting {
                     currentDialogueIndex += 1
                     if currentDialogueIndex < dialogueLines.count {
-                        promptLabel.text = dialogueLines[currentDialogueIndex]
+                        showMultilinePrompt(text: dialogueLines[currentDialogueIndex])
                     } else {
                         dialogueBox.isHidden = true
                         isInteracting = false
                         currentDialogueIndex = 0
                     }
                 } else if player.position.distance(to: npc.position) < tileSize * 1.2 {
-                    promptLabel.text = dialogueLines[0]
-                    dialogueBox.isHidden = false
+                    showMultilinePrompt(text: dialogueLines[0])
                     isInteracting = true
                     currentDialogueIndex = 0
                 }
@@ -288,54 +342,64 @@ class WorldScene: SKScene {
     }
 
     override func update(_ currentTime: TimeInterval) {
-        guard !isPaused else { return }
+            guard !isPaused else { return }
+            
+            let isMuted = UserDefaults.standard.bool(forKey: "isMusicMuted")
+            backgroundMusicPlayer?.volume = isMuted ? 0.0 : 0.35
 
-        let speed: CGFloat = 2.0
-        let dx = moveDirection.dx * speed
-        let dy = moveDirection.dy * speed
+            let speed: CGFloat = 2.0
+            let dx = moveDirection.dx * speed
+            let dy = moveDirection.dy * speed
 
-        if dx < 0 { player.xScale = -1 }
-        if dx > 0 { player.xScale = 1 }
+            if dx < 0 { player.xScale = -1 }
+            if dx > 0 { player.xScale = 1 }
 
-        player.position.x += dx
-        player.position.y += dy
+            // Track movement and count steps
+            if dx != 0 || dy != 0 {
+                player.position.x += dx
+                player.position.y += dy
 
-        if dx != 0 || dy != 0 {
-            if player.action(forKey: "walk") == nil {
-                let walkAction = SKAction.repeatForever(SKAction.animate(with: walkFrames, timePerFrame: 0.15))
-                player.run(walkAction, withKey: "walk")
+                stepCount += 1
+                if stepCount >= 100 {
+                    stepCount = 0
+                    playerXP += 10
+                    print("🎉 Earned XP for walking! Total XP: \(playerXP)")
+                }
+
+                if player.action(forKey: "walk") == nil {
+                    let walkAction = SKAction.repeatForever(SKAction.animate(with: walkFrames, timePerFrame: 0.15))
+                    player.run(walkAction, withKey: "walk")
+                }
+            } else if player.action(forKey: "walk") != nil {
+                player.removeAction(forKey: "walk")
+                player.texture = SKTexture(imageNamed: "playerIdle")
+                player.texture?.filteringMode = .nearest
             }
-        } else if player.action(forKey: "walk") != nil {
-            player.removeAction(forKey: "walk")
-            player.texture = SKTexture(imageNamed: "playerIdle")
-            player.texture?.filteringMode = .nearest
+
+            if !hasSeenPrompt && player.position.distance(to: npc.position) < tileSize * 1.2 {
+                showMultilinePrompt(text: dialogueLines[0])
+                isInteracting = true
+                hasSeenPrompt = true
+                currentDialogueIndex = 0
+            }
+
+            cameraNode.position = player.position
+
+            let mapWidth = CGFloat(tileMap?.numberOfColumns ?? 0) * tileSize
+            let mapHeight = CGFloat(tileMap?.numberOfRows ?? 0) * tileSize
+            let halfMapWidth = mapWidth / 2
+            let halfMapHeight = mapHeight / 2
+
+            player.position.x = min(max(player.position.x, -halfMapWidth), halfMapWidth)
+            player.position.y = min(max(player.position.y, -halfMapHeight), halfMapHeight)
+
+            let viewSize = view?.bounds.size ?? .zero
+            let halfViewWidth = viewSize.width / 2
+            let halfViewHeight = viewSize.height / 2
+
+            cameraNode.position.x = min(max(cameraNode.position.x, -halfMapWidth + halfViewWidth), halfMapWidth - halfViewWidth)
+            cameraNode.position.y = min(max(cameraNode.position.y, -halfMapHeight + halfViewHeight), halfMapHeight - halfViewHeight)
         }
-
-        if !hasSeenPrompt && player.position.distance(to: npc.position) < tileSize * 1.2 {
-            promptLabel.text = dialogueLines[0]
-            dialogueBox.isHidden = false
-            isInteracting = true
-            hasSeenPrompt = true
-            currentDialogueIndex = 0
-        }
-
-        cameraNode.position = player.position
-
-        let mapWidth = CGFloat(tileMap?.numberOfColumns ?? 0) * tileSize
-        let mapHeight = CGFloat(tileMap?.numberOfRows ?? 0) * tileSize
-        let halfMapWidth = mapWidth / 2
-        let halfMapHeight = mapHeight / 2
-
-        player.position.x = min(max(player.position.x, -halfMapWidth), halfMapWidth)
-        player.position.y = min(max(player.position.y, -halfMapHeight), halfMapHeight)
-
-        let viewSize = view?.bounds.size ?? .zero
-        let halfViewWidth = viewSize.width / 2
-        let halfViewHeight = viewSize.height / 2
-
-        cameraNode.position.x = min(max(cameraNode.position.x, -halfMapWidth + halfViewWidth), halfMapWidth - halfViewWidth)
-        cameraNode.position.y = min(max(cameraNode.position.y, -halfMapHeight + halfViewHeight), halfMapHeight - halfViewHeight)
-    }
 }
 
 extension CGPoint {
