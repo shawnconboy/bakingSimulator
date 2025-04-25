@@ -14,8 +14,15 @@ class WorldScene: SKScene {
     var wasPaused: Bool = false
 
     var npc: SKSpriteNode!
+    var dialogueBox: SKShapeNode!
+    var promptLabel: SKLabelNode!
     var isGamePaused = false
     var onPauseToggle: ((Bool) -> Void)?
+
+    var isInteracting = false
+    var hasSeenPrompt = false
+    var dialogueLines: [String] = []
+    var currentDialogueIndex = 0
 
     let tileSize: CGFloat = 64
     let columns: Int = 50
@@ -35,6 +42,7 @@ class WorldScene: SKScene {
         setupNPC()
         loadWalkTextures()
         addDpadAndButtons()
+        setupPromptLabel()
 
         camera = cameraNode
         addChild(cameraNode)
@@ -142,10 +150,9 @@ class WorldScene: SKScene {
         npc = SKSpriteNode(imageNamed: "npcFacing1")
         npc.texture?.filteringMode = .nearest
         npc.size = CGSize(width: tileSize, height: tileSize)
-        npc.setScale(0.80)
+        npc.setScale(0.85)
         npc.anchorPoint = CGPoint(x: 0.5, y: 0.5)
 
-        // Spawn NPC on the sidewalk to the right of the house door
         let npcCol = houseStartColumn + 4
         let npcRow = sidewalkRow
         if let map = tileMap {
@@ -153,7 +160,38 @@ class WorldScene: SKScene {
             npc.position = npcPos
         }
 
+        dialogueLines = [
+            "👋 Welcome to the baking world!",
+            "🍞 Use the joystick to move around.",
+            "🧁 Press 'A' to interact with characters and objects.",
+            "🏠 Head into buildings to explore new areas.",
+            "🎉 Good luck, baker!"
+        ]
+
         addChild(npc)
+    }
+
+    func setupPromptLabel() {
+        let boxWidth = size.width * 0.9
+        let boxHeight: CGFloat = 80
+
+        dialogueBox = SKShapeNode(rectOf: CGSize(width: boxWidth, height: boxHeight), cornerRadius: 12)
+        dialogueBox.fillColor = .black
+        dialogueBox.strokeColor = .white
+        dialogueBox.alpha = 0.75
+        dialogueBox.zPosition = 99
+        dialogueBox.isHidden = true
+        dialogueBox.position = CGPoint(x: 0, y: size.height / 2 - boxHeight - 20)
+        cameraNode.addChild(dialogueBox)
+
+        promptLabel = SKLabelNode(fontNamed: "AvenirNext-Bold")
+        promptLabel.fontSize = 18
+        promptLabel.text = ""
+        promptLabel.fontColor = .white
+        promptLabel.position = CGPoint(x: 0, y: -8)
+        promptLabel.zPosition = 100
+        promptLabel.verticalAlignmentMode = .center
+        dialogueBox.addChild(promptLabel)
     }
 
     func loadWalkTextures() {
@@ -209,28 +247,44 @@ class WorldScene: SKScene {
         }
     }
 
-    func togglePauseMenu() {
-        isGamePaused.toggle()
-        isPaused = isGamePaused
-        onPauseToggle?(isGamePaused)
-    }
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        for touch in touches {
+            let location = touch.location(in: cameraNode)
 
-    override var isPaused: Bool {
-        didSet {
-            if isPaused {
-                wasPaused = true
+            if dpadNode.contains(location) {
+                let center = dpadNode.position
+                let dx = location.x - center.x
+                let dy = location.y - center.y
+
+                if abs(dx) > abs(dy) {
+                    moveDirection = dx > 0 ? CGVector(dx: 1, dy: 0) : CGVector(dx: -1, dy: 0)
+                } else {
+                    moveDirection = dy > 0 ? CGVector(dx: 0, dy: 1) : CGVector(dx: 0, dy: -1)
+                }
+            }
+
+            if aButtonNode.contains(location) {
+                if isInteracting {
+                    currentDialogueIndex += 1
+                    if currentDialogueIndex < dialogueLines.count {
+                        promptLabel.text = dialogueLines[currentDialogueIndex]
+                    } else {
+                        dialogueBox.isHidden = true
+                        isInteracting = false
+                        currentDialogueIndex = 0
+                    }
+                } else if player.position.distance(to: npc.position) < tileSize * 1.2 {
+                    promptLabel.text = dialogueLines[0]
+                    dialogueBox.isHidden = false
+                    isInteracting = true
+                    currentDialogueIndex = 0
+                }
             }
         }
     }
 
-    override func didEvaluateActions() {
-        if !isPaused && wasPaused {
-            moveDirection = .zero
-            player.removeAction(forKey: "walk")
-            player.texture = SKTexture(imageNamed: "playerIdle")
-            player.texture?.filteringMode = .nearest
-            wasPaused = false
-        }
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+        moveDirection = .zero
     }
 
     override func update(_ currentTime: TimeInterval) {
@@ -245,6 +299,25 @@ class WorldScene: SKScene {
 
         player.position.x += dx
         player.position.y += dy
+
+        if dx != 0 || dy != 0 {
+            if player.action(forKey: "walk") == nil {
+                let walkAction = SKAction.repeatForever(SKAction.animate(with: walkFrames, timePerFrame: 0.15))
+                player.run(walkAction, withKey: "walk")
+            }
+        } else if player.action(forKey: "walk") != nil {
+            player.removeAction(forKey: "walk")
+            player.texture = SKTexture(imageNamed: "playerIdle")
+            player.texture?.filteringMode = .nearest
+        }
+
+        if !hasSeenPrompt && player.position.distance(to: npc.position) < tileSize * 1.2 {
+            promptLabel.text = dialogueLines[0]
+            dialogueBox.isHidden = false
+            isInteracting = true
+            hasSeenPrompt = true
+            currentDialogueIndex = 0
+        }
 
         cameraNode.position = player.position
 
@@ -262,40 +335,13 @@ class WorldScene: SKScene {
 
         cameraNode.position.x = min(max(cameraNode.position.x, -halfMapWidth + halfViewWidth), halfMapWidth - halfViewWidth)
         cameraNode.position.y = min(max(cameraNode.position.y, -halfMapHeight + halfViewHeight), halfMapHeight - halfViewHeight)
-
-        if dx != 0 || dy != 0 {
-            if player.action(forKey: "walk") == nil {
-                let walkAction = SKAction.repeatForever(SKAction.animate(with: walkFrames, timePerFrame: 0.15))
-                player.run(walkAction, withKey: "walk")
-            }
-        } else {
-            player.removeAction(forKey: "walk")
-            player.texture = SKTexture(imageNamed: "playerIdle")
-            player.texture?.filteringMode = .nearest
-        }
     }
+}
 
-    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
-        for touch in touches {
-            let location = touch.location(in: cameraNode)
-
-            if dpadNode.contains(location) {
-                let center = dpadNode.position
-                let dx = location.x - center.x
-                let dy = location.y - center.y
-
-                if abs(dx) > abs(dy) {
-                    moveDirection = dx > 0 ? CGVector(dx: 1, dy: 0) : CGVector(dx: -1, dy: 0)
-                } else {
-                    moveDirection = dy > 0 ? CGVector(dx: 0, dy: 1) : CGVector(dx: 0, dy: -1)
-                }
-            }
-
-            // A and B buttons are disabled for now (no action assigned)
-        }
-    }
-
-    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
-        moveDirection = .zero
+extension CGPoint {
+    func distance(to point: CGPoint) -> CGFloat {
+        let dx = x - point.x
+        let dy = y - point.y
+        return sqrt(dx * dx + dy * dy)
     }
 }
