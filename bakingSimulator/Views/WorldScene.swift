@@ -22,6 +22,9 @@ class WorldScene: SKScene {
     let rows: Int = 50
     var moveDirection: CGVector = .zero
 
+    // Add a property to track if player is at the door
+    var isAtDoor: Bool = false
+
     override func didMove(to view: SKView) {
         backgroundColor = .black
         
@@ -53,8 +56,15 @@ class WorldScene: SKScene {
         let grassTileGroup = SKTileGroup(tileDefinition: SKTileDefinition(texture: SKTexture(imageNamed: "tileGrass")))
         let roadTileGroup = SKTileGroup(tileDefinition: SKTileDefinition(texture: SKTexture(imageNamed: "tileRoad")))
         let sidewalkTileGroup = SKTileGroup(tileDefinition: SKTileDefinition(texture: SKTexture(imageNamed: "tileSidewalk")))
+        let houseLeftGroup = SKTileGroup(tileDefinition: SKTileDefinition(texture: SKTexture(imageNamed: "blueHouseLeft")))
+        let houseRightGroup = SKTileGroup(tileDefinition: SKTileDefinition(texture: SKTexture(imageNamed: "blueHouseRight")))
+        let houseSidingGroup = SKTileGroup(tileDefinition: SKTileDefinition(texture: SKTexture(imageNamed: "blueHouseSiding")))
+        let houseWindowGroup = SKTileGroup(tileDefinition: SKTileDefinition(texture: SKTexture(imageNamed: "blueHouseWindow")))
+        let houseDoorGroup = SKTileGroup(tileDefinition: SKTileDefinition(texture: SKTexture(imageNamed: "blueHouseDoor")))
         
-        tileSet.tileGroups = [grassTileGroup, roadTileGroup, sidewalkTileGroup]
+        tileSet.tileGroups = [grassTileGroup, roadTileGroup, sidewalkTileGroup, 
+                            houseLeftGroup, houseRightGroup, houseSidingGroup, 
+                            houseWindowGroup, houseDoorGroup]
 
         // Create the tile map
         let tileMap = SKTileMapNode(tileSet: tileSet, columns: columns, rows: rows, tileSize: CGSize(width: tileSize, height: tileSize))
@@ -89,6 +99,24 @@ class WorldScene: SKScene {
                 tileMap.setTileGroup(sidewalkTileGroup, forColumn: column, row: sidewalkRow)
             }
         }
+
+        // Add the blue house above the sidewalk
+        let houseStartColumn = columns / 2 - 2  // Center the house
+        let houseStartRow = sidewalkRow + 1     // One row above the sidewalk
+        
+        // Bottom row of the house
+        tileMap.setTileGroup(houseLeftGroup, forColumn: houseStartColumn, row: houseStartRow)
+        tileMap.setTileGroup(houseWindowGroup, forColumn: houseStartColumn + 1 , row: houseStartRow)
+        tileMap.setTileGroup(houseWindowGroup, forColumn: houseStartColumn + 2 , row: houseStartRow)
+        tileMap.setTileGroup(houseDoorGroup, forColumn: houseStartColumn + 3, row: houseStartRow)
+        tileMap.setTileGroup(houseRightGroup, forColumn: houseStartColumn + 4, row: houseStartRow)
+        
+        // Top row of the house
+        tileMap.setTileGroup(houseLeftGroup, forColumn: houseStartColumn, row: houseStartRow + 1)
+        tileMap.setTileGroup(houseWindowGroup, forColumn: houseStartColumn + 1, row: houseStartRow + 1)
+        tileMap.setTileGroup(houseWindowGroup, forColumn: houseStartColumn + 2, row: houseStartRow + 1)
+        tileMap.setTileGroup(houseSidingGroup, forColumn: houseStartColumn + 3, row: houseStartRow + 1)
+        tileMap.setTileGroup(houseRightGroup, forColumn: houseStartColumn + 4, row: houseStartRow + 1)
     }
 
     override func didEvaluateActions() {
@@ -197,26 +225,24 @@ class WorldScene: SKScene {
         if dx < 0 { player.xScale = -1 }
         if dx > 0 { player.xScale = 1 }
 
-        // Calculate new position
-        let newX = player.position.x + dx
-        let newY = player.position.y + dy
-
-        // Get map boundaries
-        let mapWidth = CGFloat(tileMap?.numberOfColumns ?? 0) * tileSize
-        let mapHeight = CGFloat(tileMap?.numberOfRows ?? 0) * tileSize
-        let halfMapWidth = mapWidth / 2
-        let halfMapHeight = mapHeight / 2
-        let halfPlayerWidth = player.size.width / 2
-        let halfPlayerHeight = player.size.height / 2
-
-        // Constrain player to map boundaries
-        player.position.x = min(max(newX, -halfMapWidth + halfPlayerWidth), halfMapWidth - halfPlayerWidth)
-        player.position.y = min(max(newY, -halfMapHeight + halfPlayerHeight), halfMapHeight - halfPlayerHeight)
+        // Simple movement without collision for now
+        player.position.x += dx
+        player.position.y += dy
 
         // Update camera position
         cameraNode.position = player.position
 
-        // Constrain camera to map boundaries
+        // Basic map boundaries
+        let mapWidth = CGFloat(tileMap?.numberOfColumns ?? 0) * tileSize
+        let mapHeight = CGFloat(tileMap?.numberOfRows ?? 0) * tileSize
+        let halfMapWidth = mapWidth / 2
+        let halfMapHeight = mapHeight / 2
+
+        // Keep player within map bounds
+        player.position.x = min(max(player.position.x, -halfMapWidth), halfMapWidth)
+        player.position.y = min(max(player.position.y, -halfMapHeight), halfMapHeight)
+
+        // Keep camera within map bounds
         let viewSize = view?.bounds.size ?? .zero
         let halfViewWidth = viewSize.width / 2
         let halfViewHeight = viewSize.height / 2
@@ -255,8 +281,13 @@ class WorldScene: SKScene {
             }
 
             if aButtonNode.contains(location) {
-                print("🅰️ A Button Pressed — Toggling pause menu")
-                togglePauseMenu()
+                if isAtDoor {
+                    print("🚪 At the door - ready for room transition")
+                    // Here we'll add the room transition logic later
+                } else {
+                    print("🅰️ A Button Pressed — Toggling pause menu")
+                    togglePauseMenu()
+                }
             }
 
             if bButtonNode.contains(location) {
