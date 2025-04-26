@@ -2,63 +2,63 @@ import SwiftUI
 
 struct HomeView: View {
     @AppStorage("playerXP") var playerXP: Int = 0
+    @AppStorage("playerLevel") var playerLevel: Int = 1
 
-    // XP milestones for each level
-    let xpMilestones = [0, 1000, 2500, 5000, 10000]
-
-    // Calculate level
-    var currentLevel: Int {
-        for i in 1..<xpMilestones.count {
-            if playerXP < xpMilestones[i] {
-                return i
-            }
-        }
-        return xpMilestones.count
-    }
-
-    var xpForCurrentLevel: Int {
-        xpMilestones[currentLevel - 1]
-    }
+    let xpMilestones = [1000, 2500, 5000, 10000, 20000]
 
     var xpForNextLevel: Int {
-        xpMilestones[currentLevel]
+        playerLevel <= xpMilestones.count ? xpMilestones[playerLevel - 1] : xpMilestones.last ?? 20000
     }
 
     var xpProgress: Double {
-        Double(playerXP - xpForCurrentLevel) / Double(xpForNextLevel - xpForCurrentLevel)
+        Double(playerXP) / Double(xpForNextLevel)
     }
 
     var body: some View {
-        VStack(spacing: 20) {
-            // XP + Level tracker
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Level \(currentLevel)")
-                    .font(.headline)
+        ScrollView {
+            VStack(spacing: 30) {
+                // Level and XP Display
+                VStack(spacing: 10) {
+                    Text("Level \(playerLevel)")
+                        .font(.largeTitle)
+                        .bold()
 
-                ProgressView(value: xpProgress)
-                    .progressViewStyle(LinearProgressViewStyle(tint: .green))
-                    .frame(height: 12)
-                    .background(Color.gray.opacity(0.2))
-                    .cornerRadius(6)
+                    ZStack(alignment: .leading) {
+                        RoundedRectangle(cornerRadius: 10)
+                            .frame(height: 20)
+                            .foregroundColor(Color.gray.opacity(0.3))
 
-                Text("\(playerXP - xpForCurrentLevel) / \(xpForNextLevel - xpForCurrentLevel) XP")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                        RoundedRectangle(cornerRadius: 10)
+                            .frame(width: CGFloat(xpProgress) * UIScreen.main.bounds.width * 0.8, height: 20)
+                            .foregroundColor(.green)
+                            .animation(.easeInOut(duration: 0.5), value: xpProgress)
+                    }
+                    .frame(width: UIScreen.main.bounds.width * 0.8)
+
+                    Text("\(playerXP) / \(xpForNextLevel) XP")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .padding()
+
+                Divider()
+
+                // Welcome Text
+                VStack(spacing: 10) {
+                    Text("Welcome to Baking Simulator!")
+                        .font(.title)
+                        .bold()
+                        .multilineTextAlignment(.center)
+
+                    Text("Manage your bakery, bake goods, and fulfill customer orders. Level up by exploring and completing missions!")
+                        .font(.body)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal)
+                }
+
+                Spacer()
             }
-            .padding(.horizontal)
-
-            Text("Welcome to Baking Simulator!")
-                .font(.largeTitle)
-                .bold()
-                .multilineTextAlignment(.center)
-                .padding(.top)
-
-            Text("Manage your bakery, bake goods, and fulfill customer orders.")
-                .multilineTextAlignment(.center)
-                .padding(.horizontal)
-
-            Spacer()
+            .padding()
         }
-        .padding()
     }
 }

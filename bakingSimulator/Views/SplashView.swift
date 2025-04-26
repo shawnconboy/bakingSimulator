@@ -14,15 +14,10 @@ struct SplashView: View {
                 .ignoresSafeArea()
 
             VStack(spacing: 20) {
-                Text("🍪🥛")
-                    .font(.system(size: 100))
-                    .scaleEffect(showContent ? 1.0 : 0.8)
-                    .opacity(showContent ? 1.0 : 0.0)
-
-                Text("Baking Simulator")
-                    .font(.title)
-                    .fontWeight(.bold)
-                    .foregroundColor(.black)
+                Image("cookieQuestLogo") // ✅ Add logo
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 300, height: 300) // Adjust size as needed
                     .opacity(showContent ? 1.0 : 0.0)
             }
             .animation(.easeIn(duration: 1.0), value: showContent)
@@ -30,8 +25,8 @@ struct SplashView: View {
         .opacity(fadeOut ? 0.0 : 1.0)
         .animation(.easeOut(duration: 0.5), value: fadeOut)
         .onAppear {
-            playDingSound()       // 🔔 Play immediately
-            showContent = true    // 🧁 Start animating in
+            playDingSound()
+            showContent = true
 
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
                 fadeOut = true

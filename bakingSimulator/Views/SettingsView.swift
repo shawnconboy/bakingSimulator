@@ -12,9 +12,17 @@ struct SettingsView: View {
             Toggle("Mute Music", isOn: $isMusicMuted)
                 .padding()
                 .font(.title2)
+                .onChange(of: isMusicMuted) {
+                    NotificationCenter.default.post(name: .muteSettingChanged, object: nil)
+                }
+
 
             Spacer()
         }
         .padding()
     }
+}
+
+extension Notification.Name {
+    static let muteSettingChanged = Notification.Name("muteSettingChanged")
 }

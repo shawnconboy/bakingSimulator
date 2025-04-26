@@ -5,10 +5,10 @@ struct ContentView: View {
         TabView {
             WorldView()
                 .tabItem {
-                    Label("World", systemImage: "gamecontroller")
+                    Label("World", systemImage: "globe")
                 }
 
-            HomeView()
+            HomeView() // ✅ NOT Text("Home View") — this is your real HomeView now
                 .tabItem {
                     Label("Home", systemImage: "house")
                 }
@@ -29,8 +29,4 @@ struct ContentView: View {
                 }
         }
     }
-}
-
-#Preview {
-    ContentView()
 }

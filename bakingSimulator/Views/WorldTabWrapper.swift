@@ -4,18 +4,20 @@ import SpriteKit
 struct WorldTabWrapper: View {
     @Binding var isPaused: Bool
 
-    var body: some View {
-        SpriteView(scene: makeScene())
-            .ignoresSafeArea()
-    }
+    @State private var scene = WorldScene()
 
-    private func makeScene() -> SKScene {
-        let scene = WorldScene()
-        scene.size = UIScreen.main.bounds.size
-        scene.scaleMode = .resizeFill
-        scene.onPauseToggle = { paused in
-            isPaused = paused
+    var body: some View {
+        GeometryReader { _ in
+            SpriteView(scene: scene)
+                .ignoresSafeArea()
+                .onAppear {
+                    scene.size = UIScreen.main.bounds.size
+                    scene.scaleMode = .resizeFill
+                }
+                .onChange(of: isPaused) {
+                    scene.isPaused = isPaused
+                    print("🟡 onChange: isPaused = \(isPaused)")
+                }
         }
-        return scene
     }
 }

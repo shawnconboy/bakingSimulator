@@ -5,78 +5,102 @@ class WorldScene: SKScene {
     var tileMap: SKTileMapNode?
     let player = SKSpriteNode(imageNamed: "playerIdle")
     let cameraNode = SKCameraNode()
+
     var backgroundMusicPlayer: AVAudioPlayer?
+    let backgroundTracks = ["lofi1", "lofi2", "lofi3", "lofi4"]
+
     var walkFrames: [SKTexture] = []
 
     var dpadNode: SKSpriteNode!
     var aButtonNode: SKSpriteNode!
-    var bButtonNode: SKSpriteNode!
-    var wasPaused: Bool = false
+
+    var moveDirection: CGVector = .zero
 
     var npc: SKSpriteNode!
     var dialogueBox: SKShapeNode!
-    var promptLabels: [SKLabelNode] = []
-
-    var isGamePaused = false
-    var onPauseToggle: ((Bool) -> Void)?
-
-    var isInteracting = false
-    var hasSeenPrompt = false
+    var dialogueLabels: [SKLabelNode] = []
     var dialogueLines: [String] = []
     var currentDialogueIndex = 0
+    var isInteracting = false
+    var hasSeenNPC = false
+
+    var bButtonNode: SKSpriteNode!
 
     let tileSize: CGFloat = 64
-    let columns: Int = 50
-    let rows: Int = 50
-    var moveDirection: CGVector = .zero
+    let columns = 50
+    let rows = 50
 
-    var isAtDoor: Bool = false
-    var houseStartColumn: Int = 0
-    var sidewalkRow: Int = 0
-    
     var stepCount = 0
     var playerXP: Int {
         get { UserDefaults.standard.integer(forKey: "playerXP") }
         set { UserDefaults.standard.set(newValue, forKey: "playerXP") }
     }
+    var playerLevel: Int {
+        get { UserDefaults.standard.integer(forKey: "playerLevel") == 0 ? 1 : UserDefaults.standard.integer(forKey: "playerLevel") }
+        set { UserDefaults.standard.set(newValue, forKey: "playerLevel") }
+    }
 
+    let xpMilestones = [1000, 2500, 5000, 10000, 20000]
 
+    func checkLevelUp() {
+        let xpNeeded = playerLevel <= xpMilestones.count ? xpMilestones[playerLevel - 1] : xpMilestones.last!
+        if playerXP >= xpNeeded {
+            playerXP -= xpNeeded
+            playerLevel += 1
+            print("✨ Level Up! Now Level \(playerLevel)")
+        }
+    }
 
     override func didMove(to view: SKView) {
         backgroundColor = .black
         anchorPoint = CGPoint(x: 0.5, y: 0.5)
 
+        for i in 1...4 {
+            let textureName = "playerWalk\(i)"
+            let texture = SKTexture(imageNamed: textureName)
+            texture.filteringMode = .nearest
+            walkFrames.append(texture)
+        }
+
+        playBackgroundMusic()
+
+        NotificationCenter.default.addObserver(self, selector: #selector(handleMuteSettingChanged), name: .muteSettingChanged, object: nil)
+
         setupTileMap()
         setupPlayer()
         setupNPC()
-        loadWalkTextures()
-        addDpadAndButtons()
-        setupPromptLabel()
+        setupCamera()
+        addDpad()
+        setupDialogueBox()
+    }
 
-        camera = cameraNode
-        addChild(cameraNode)
-        cameraNode.position = player.position
-
-        let musicOptions = ["lofi1.mp3", "lofi2.mp3", "lofi3.mp3", "lofi4.mp3"]
-        if let randomTrack = musicOptions.randomElement() {
-            playBackgroundMusic(filename: randomTrack)
-        }
-
-        if UserDefaults.standard.bool(forKey: "isMusicMuted") {
-            backgroundMusicPlayer?.volume = 0.0
+    func startWalkingAnimation() {
+        if player.action(forKey: "walking") == nil {
+            let walkAction = SKAction.repeatForever(SKAction.animate(with: walkFrames, timePerFrame: 0.1))
+            player.run(walkAction, withKey: "walking")
         }
     }
 
-    func playBackgroundMusic(filename: String) {
-        if let url = Bundle.main.url(forResource: filename, withExtension: nil) {
+    func stopWalkingAnimation() {
+        player.removeAction(forKey: "walking")
+
+        let idleTexture = SKTexture(imageNamed: "playerIdle")
+        idleTexture.filteringMode = .nearest
+        player.texture = idleTexture
+    }
+
+    func playBackgroundMusic() {
+        if let randomTrack = backgroundTracks.randomElement(),
+           let url = Bundle.main.url(forResource: randomTrack, withExtension: "mp3") {
             do {
                 backgroundMusicPlayer = try AVAudioPlayer(contentsOf: url)
                 backgroundMusicPlayer?.numberOfLoops = -1
-                backgroundMusicPlayer?.volume = 0.35
                 backgroundMusicPlayer?.prepareToPlay()
                 backgroundMusicPlayer?.play()
+
+                applyMuteSetting()
             } catch {
-                print("\u{274C} Could not load file: \(filename)")
+                print("🎵 Error loading background music: \(error)")
             }
         }
     }
@@ -84,221 +108,110 @@ class WorldScene: SKScene {
     func setupTileMap() {
         let tileSet = SKTileSet()
         let grassTileGroup = SKTileGroup(tileDefinition: SKTileDefinition(texture: SKTexture(imageNamed: "tileGrass")))
-        let roadTileGroup = SKTileGroup(tileDefinition: SKTileDefinition(texture: SKTexture(imageNamed: "tileRoad")))
-        let sidewalkTileGroup = SKTileGroup(tileDefinition: SKTileDefinition(texture: SKTexture(imageNamed: "tileSidewalk")))
-        let houseLeftGroup = SKTileGroup(tileDefinition: SKTileDefinition(texture: SKTexture(imageNamed: "blueHouseLeft")))
-        let houseRightGroup = SKTileGroup(tileDefinition: SKTileDefinition(texture: SKTexture(imageNamed: "blueHouseRight")))
-        let houseSidingGroup = SKTileGroup(tileDefinition: SKTileDefinition(texture: SKTexture(imageNamed: "blueHouseSiding")))
-        let houseWindowGroup = SKTileGroup(tileDefinition: SKTileDefinition(texture: SKTexture(imageNamed: "blueHouseWindow")))
-        let houseDoorGroup = SKTileGroup(tileDefinition: SKTileDefinition(texture: SKTexture(imageNamed: "blueHouseDoor")))
+        tileSet.tileGroups = [grassTileGroup]
 
-        tileSet.tileGroups = [grassTileGroup, roadTileGroup, sidewalkTileGroup,
-                              houseLeftGroup, houseRightGroup, houseSidingGroup,
-                              houseWindowGroup, houseDoorGroup]
+        let map = SKTileMapNode(tileSet: tileSet, columns: columns, rows: rows, tileSize: CGSize(width: tileSize, height: tileSize))
+        map.anchorPoint = CGPoint(x: 0.5, y: 0.5)
+        map.position = .zero
 
-        let tileMap = SKTileMapNode(tileSet: tileSet, columns: columns, rows: rows, tileSize: CGSize(width: tileSize, height: tileSize))
-        tileMap.anchorPoint = CGPoint(x: 0.5, y: 0.5)
-        tileMap.position = CGPoint(x: 0, y: 0)
-        addChild(tileMap)
-        self.tileMap = tileMap
-
-        for column in 0..<columns {
+        for col in 0..<columns {
             for row in 0..<rows {
-                tileMap.setTileGroup(grassTileGroup, forColumn: column, row: row)
+                map.setTileGroup(grassTileGroup, forColumn: col, row: row)
             }
         }
 
-        let roadWidth = 2
-        let roadRow = rows / 2
-        for column in 0..<columns {
-            for offset in -roadWidth/2...roadWidth/2 {
-                let row = roadRow + offset
-                if row >= 0 && row < rows {
-                    tileMap.setTileGroup(roadTileGroup, forColumn: column, row: row)
-                }
-            }
-        }
-
-        sidewalkRow = roadRow + roadWidth/2 + 1
-        for column in 0..<columns {
-            if sidewalkRow >= 0 && sidewalkRow < rows {
-                tileMap.setTileGroup(sidewalkTileGroup, forColumn: column, row: sidewalkRow)
-            }
-        }
-
-        houseStartColumn = columns / 2 - 2
-        let houseStartRow = sidewalkRow + 1
-
-        tileMap.setTileGroup(houseLeftGroup, forColumn: houseStartColumn, row: houseStartRow)
-        tileMap.setTileGroup(houseWindowGroup, forColumn: houseStartColumn + 1 , row: houseStartRow)
-        tileMap.setTileGroup(houseWindowGroup, forColumn: houseStartColumn + 2 , row: houseStartRow)
-        tileMap.setTileGroup(houseDoorGroup, forColumn: houseStartColumn + 3, row: houseStartRow)
-        tileMap.setTileGroup(houseRightGroup, forColumn: houseStartColumn + 4, row: houseStartRow)
-
-        tileMap.setTileGroup(houseLeftGroup, forColumn: houseStartColumn, row: houseStartRow + 1)
-        tileMap.setTileGroup(houseWindowGroup, forColumn: houseStartColumn + 1, row: houseStartRow + 1)
-        tileMap.setTileGroup(houseWindowGroup, forColumn: houseStartColumn + 2, row: houseStartRow + 1)
-        tileMap.setTileGroup(houseSidingGroup, forColumn: houseStartColumn + 3, row: houseStartRow + 1)
-        tileMap.setTileGroup(houseRightGroup, forColumn: houseStartColumn + 4, row: houseStartRow + 1)
-
-        let solidHouseTiles: [(Int, Int)] = [
-            (houseStartColumn, houseStartRow + 1),
-            (houseStartColumn + 1, houseStartRow + 1),
-            (houseStartColumn + 2, houseStartRow + 1),
-            (houseStartColumn + 3, houseStartRow + 1),
-            (houseStartColumn + 4, houseStartRow + 1)
-        ]
-
-        let offsetY: CGFloat = -24
-        for (col, row) in solidHouseTiles {
-            let tileCenter = tileMap.centerOfTile(atColumn: col, row: row)
-            let blocker = SKNode()
-            blocker.position = CGPoint(x: tileCenter.x, y: tileCenter.y + offsetY)
-            blocker.physicsBody = SKPhysicsBody(rectangleOf: CGSize(width: tileSize, height: tileSize))
-            blocker.physicsBody?.isDynamic = false
-            addChild(blocker)
-        }
+        addChild(map)
+        self.tileMap = map
     }
-    
-    
+
     func setupPlayer() {
+        let idleTexture = SKTexture(imageNamed: "playerIdle")
+        idleTexture.filteringMode = .nearest
+
+        player.texture = idleTexture
         player.size = CGSize(width: tileSize, height: tileSize)
-        player.texture?.filteringMode = .nearest
-        player.position = CGPoint(x: 0, y: tileSize * 2)
-        player.physicsBody = SKPhysicsBody(rectangleOf: player.size)
-        player.physicsBody?.allowsRotation = false
-        player.physicsBody?.affectedByGravity = false
-        player.physicsBody?.categoryBitMask = 0x1 << 0
-        player.physicsBody?.collisionBitMask = 0xFFFFFFFF
-        player.physicsBody?.contactTestBitMask = 0xFFFFFFFF
+        player.position = CGPoint(x: 0, y: 0)
         addChild(player)
     }
 
     func setupNPC() {
         npc = SKSpriteNode(imageNamed: "npcFacing1")
         npc.texture?.filteringMode = .nearest
-        npc.size = CGSize(width: tileSize, height: tileSize)
-        npc.setScale(0.85)
-        npc.anchorPoint = CGPoint(x: 0.5, y: 0.5)
-
-        let npcCol = houseStartColumn + 4
-        let npcRow = sidewalkRow
-        if let map = tileMap {
-            let npcPos = map.centerOfTile(atColumn: npcCol, row: npcRow)
-            npc.position = npcPos
-        }
+        npc.size = CGSize(width: tileSize * 0.85, height: tileSize * 0.85) // 👈 scale down
+        npc.position = CGPoint(x: tileSize * 5, y: tileSize * 5)
+        addChild(npc)
 
         dialogueLines = [
-            "👋 Welcome to the baking world!",
-            "🍞 Use the joystick to move around.",
-            "🧁 Press 'A' to interact with characters and objects.",
-            "🏠 Head into buildings to explore new areas.",
-            "🎉 Good luck, baker! You'll knead it!"
+            "👋 Hello, welcome to Cookie Quest!",
+            "🍪 Collect ingredients and bake goodies.",
+            "🏠 Visit buildings and explore around!",
+            "Good luck, chef!"
         ]
-
-        addChild(npc)
-    }
-
-    func setupPromptLabel() {
-        let boxWidth = size.width * 0.9
-        let boxHeight: CGFloat = 80
-
-        dialogueBox = SKShapeNode(rectOf: CGSize(width: boxWidth, height: boxHeight), cornerRadius: 12)
-        dialogueBox.fillColor = .black
-        dialogueBox.strokeColor = .white
-        dialogueBox.alpha = 0.75
-        dialogueBox.zPosition = 99
-        dialogueBox.isHidden = true
-        dialogueBox.position = CGPoint(x: 0, y: size.height / 2 - boxHeight - 20)
-        cameraNode.addChild(dialogueBox)
-    }
-
-    func showMultilinePrompt(text: String, fontSize: CGFloat = 18, maxCharsPerLine: Int = 38, verticalPadding: CGFloat = 20) {
-        promptLabels.forEach { $0.removeFromParent() }
-        promptLabels.removeAll()
-
-        // Split into words and wrap manually by character count
-        let words = text.split(separator: " ")
-        var lines: [String] = []
-        var currentLine = ""
-
-        for word in words {
-            if currentLine.count + word.count + 1 <= maxCharsPerLine {
-                currentLine += (currentLine.isEmpty ? "" : " ") + word
-            } else {
-                lines.append(currentLine)
-                currentLine = String(word)
-            }
-        }
-        if !currentLine.isEmpty {
-            lines.append(currentLine)
-        }
-
-        // Sizing
-        let lineHeight = fontSize + 10
-        let contentHeight = CGFloat(lines.count) * lineHeight
-        let boxWidth = CGFloat(maxCharsPerLine) * (fontSize * 0.55) + 40
-        let boxHeight = contentHeight + verticalPadding * 2
-
-        dialogueBox.path = CGPath(roundedRect: CGRect(x: -boxWidth/2, y: -boxHeight/2, width: boxWidth, height: boxHeight), cornerWidth: 12, cornerHeight: 12, transform: nil)
-        dialogueBox.position = CGPoint(x: 0, y: size.height / 2 - boxHeight - 40)
-        dialogueBox.isHidden = false
-
-        for (i, line) in lines.enumerated() {
-            let label = SKLabelNode(fontNamed: "AvenirNext-Bold")
-            label.text = line
-            label.fontColor = .white
-            label.fontSize = fontSize
-            label.horizontalAlignmentMode = .center
-            label.verticalAlignmentMode = .center
-            let yOffset = (CGFloat(lines.count - 1) / 2.0 - CGFloat(i)) * lineHeight
-            label.position = CGPoint(x: 0, y: yOffset)
-            label.zPosition = 100
-            dialogueBox.addChild(label)
-            promptLabels.append(label)
-        }
     }
 
 
-
-
-    func loadWalkTextures() {
-        walkFrames = [
-            SKTexture(imageNamed: "playerWalk1"),
-            SKTexture(imageNamed: "playerWalk2"),
-            SKTexture(imageNamed: "playerWalk3"),
-            SKTexture(imageNamed: "playerWalk4")
-        ]
-        for frame in walkFrames {
-            frame.filteringMode = .nearest
-        }
+    func setupCamera() {
+        camera = cameraNode
+        cameraNode.position = player.position
+        addChild(cameraNode)
     }
 
-    func addDpadAndButtons() {
+    func addDpad() {
         dpadNode = SKSpriteNode(imageNamed: "XboxSeriesX_Dpad")
-        dpadNode.name = "dpad"
         dpadNode.alpha = 0.8
-        dpadNode.zPosition = 10
         dpadNode.setScale(1.5)
-        dpadNode.position = CGPoint(x: -size.width / 2 + dpadNode.size.width * 0.6 + 10,
-                                    y: -size.height / 2 + dpadNode.size.height * 0.75 + 40)
+        dpadNode.zPosition = 10
+        dpadNode.position = CGPoint(x: -size.width / 2 + 100, y: -size.height / 2 + 200)
         cameraNode.addChild(dpadNode)
 
         aButtonNode = SKSpriteNode(imageNamed: "XboxSeriesX_A")
-        aButtonNode.name = "aButton"
         aButtonNode.alpha = 0.8
-        aButtonNode.zPosition = 10
         aButtonNode.setScale(1.0)
+        aButtonNode.zPosition = 10
         aButtonNode.position = CGPoint(x: size.width / 2 - 80, y: -size.height / 2 + 200)
         cameraNode.addChild(aButtonNode)
 
+        // 🔥 NEW - B Button
         bButtonNode = SKSpriteNode(imageNamed: "XboxSeriesX_B")
-        bButtonNode.name = "bButton"
         bButtonNode.alpha = 0.8
-        bButtonNode.zPosition = 10
         bButtonNode.setScale(1.0)
-        bButtonNode.position = CGPoint(x: size.width / 2 - 130, y: -size.height / 2 + 120)
+        bButtonNode.zPosition = 10
+        bButtonNode.position = CGPoint(x: size.width / 2 - 160, y: -size.height / 2 + 140)
         cameraNode.addChild(bButtonNode)
+    }
+
+
+
+    func setupDialogueBox() {
+        dialogueBox = SKShapeNode(rectOf: CGSize(width: size.width * 0.8, height: 100), cornerRadius: 10)
+        dialogueBox.fillColor = .black
+        dialogueBox.strokeColor = .white
+        dialogueBox.alpha = 0.8
+        dialogueBox.zPosition = 99
+        dialogueBox.isHidden = true
+        dialogueBox.position = CGPoint(x: 0, y: size.height / 2 - 140)
+        cameraNode.addChild(dialogueBox)
+    }
+
+    func showDialogue(text: String) {
+        dialogueBox.removeAllChildren()
+
+        let label = SKLabelNode(text: text)
+        label.fontName = "AvenirNext-Bold"
+        label.fontSize = 18
+        label.fontColor = .white
+        label.numberOfLines = 0
+        label.preferredMaxLayoutWidth = dialogueBox.frame.width - 40
+        
+        // ✨ CENTER IT
+        label.horizontalAlignmentMode = .center
+        label.verticalAlignmentMode = .center
+
+        label.position = .zero
+
+        dialogueBox.addChild(label)
+
+        dialogueBox.isHidden = false
     }
 
 
@@ -322,18 +235,22 @@ class WorldScene: SKScene {
                 if isInteracting {
                     currentDialogueIndex += 1
                     if currentDialogueIndex < dialogueLines.count {
-                        showMultilinePrompt(text: dialogueLines[currentDialogueIndex])
+                        showDialogue(text: dialogueLines[currentDialogueIndex])
                     } else {
                         dialogueBox.isHidden = true
                         isInteracting = false
                         currentDialogueIndex = 0
                     }
-                } else if player.position.distance(to: npc.position) < tileSize * 1.2 {
-                    showMultilinePrompt(text: dialogueLines[0])
-                    isInteracting = true
-                    currentDialogueIndex = 0
+                } else {
+                    // 🔥 If not currently interacting, check if close to NPC to restart dialogue
+                    if player.position.distance(to: npc.position) < tileSize * 1.5 {
+                        isInteracting = true
+                        currentDialogueIndex = 0
+                        showDialogue(text: dialogueLines[currentDialogueIndex])
+                    }
                 }
             }
+
         }
     }
 
@@ -342,64 +259,54 @@ class WorldScene: SKScene {
     }
 
     override func update(_ currentTime: TimeInterval) {
-            guard !isPaused else { return }
+        let speed: CGFloat = 2.0
+        player.position.x += moveDirection.dx * speed
+        player.position.y += moveDirection.dy * speed
+
+        cameraNode.position = player.position
+
+        if moveDirection.dx != 0 || moveDirection.dy != 0 {
+            stepCount += 1
+            if stepCount >= 100 {
+                stepCount = 0
+                playerXP += 100
+                print("🎉 Earned XP! Total XP: \(playerXP)")
+                checkLevelUp()
+            }
             
-            let isMuted = UserDefaults.standard.bool(forKey: "isMusicMuted")
-            backgroundMusicPlayer?.volume = isMuted ? 0.0 : 0.35
+            startWalkingAnimation()
 
-            let speed: CGFloat = 2.0
-            let dx = moveDirection.dx * speed
-            let dy = moveDirection.dy * speed
-
-            if dx < 0 { player.xScale = -1 }
-            if dx > 0 { player.xScale = 1 }
-
-            // Track movement and count steps
-            if dx != 0 || dy != 0 {
-                player.position.x += dx
-                player.position.y += dy
-
-                stepCount += 1
-                if stepCount >= 100 {
-                    stepCount = 0
-                    playerXP += 10
-                    print("🎉 Earned XP for walking! Total XP: \(playerXP)")
-                }
-
-                if player.action(forKey: "walk") == nil {
-                    let walkAction = SKAction.repeatForever(SKAction.animate(with: walkFrames, timePerFrame: 0.15))
-                    player.run(walkAction, withKey: "walk")
-                }
-            } else if player.action(forKey: "walk") != nil {
-                player.removeAction(forKey: "walk")
-                player.texture = SKTexture(imageNamed: "playerIdle")
-                player.texture?.filteringMode = .nearest
+            // 👣 Flip player based on horizontal movement
+            if moveDirection.dx < 0 {
+                player.xScale = -1.0
+            } else if moveDirection.dx > 0 {
+                player.xScale = 1.0
             }
 
-            if !hasSeenPrompt && player.position.distance(to: npc.position) < tileSize * 1.2 {
-                showMultilinePrompt(text: dialogueLines[0])
-                isInteracting = true
-                hasSeenPrompt = true
-                currentDialogueIndex = 0
-            }
-
-            cameraNode.position = player.position
-
-            let mapWidth = CGFloat(tileMap?.numberOfColumns ?? 0) * tileSize
-            let mapHeight = CGFloat(tileMap?.numberOfRows ?? 0) * tileSize
-            let halfMapWidth = mapWidth / 2
-            let halfMapHeight = mapHeight / 2
-
-            player.position.x = min(max(player.position.x, -halfMapWidth), halfMapWidth)
-            player.position.y = min(max(player.position.y, -halfMapHeight), halfMapHeight)
-
-            let viewSize = view?.bounds.size ?? .zero
-            let halfViewWidth = viewSize.width / 2
-            let halfViewHeight = viewSize.height / 2
-
-            cameraNode.position.x = min(max(cameraNode.position.x, -halfMapWidth + halfViewWidth), halfMapWidth - halfViewWidth)
-            cameraNode.position.y = min(max(cameraNode.position.y, -halfMapHeight + halfViewHeight), halfMapHeight - halfViewHeight)
+        } else {
+            stopWalkingAnimation()
         }
+
+        if !isInteracting && !hasSeenNPC && player.position.distance(to: npc.position) < tileSize * 1.5 {
+            showDialogue(text: dialogueLines[0])
+            isInteracting = true
+            hasSeenNPC = true
+            currentDialogueIndex = 0
+        }
+    }
+
+
+    @objc func handleMuteSettingChanged() {
+        applyMuteSetting()
+    }
+
+    func applyMuteSetting() {
+        if UserDefaults.standard.bool(forKey: "isMusicMuted") {
+            backgroundMusicPlayer?.volume = 0
+        } else {
+            backgroundMusicPlayer?.volume = 0.5
+        }
+    }
 }
 
 extension CGPoint {
