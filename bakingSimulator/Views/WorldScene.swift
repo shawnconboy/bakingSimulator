@@ -263,7 +263,23 @@ class WorldScene: SKScene {
         player.position.x += moveDirection.dx * speed
         player.position.y += moveDirection.dy * speed
 
+        let playerHalfWidth = player.size.width / 2
+        let playerHalfHeight = player.size.height / 2
+        let mapWidth = tileSize * CGFloat(columns)
+        let mapHeight = tileSize * CGFloat(rows)
+
+        // 🛡️ Clamp player inside actual map
+        player.position.x = min(max(player.position.x, -mapWidth/2 + playerHalfWidth), mapWidth/2 - playerHalfWidth)
+        player.position.y = min(max(player.position.y, -mapHeight/2 + playerHalfHeight), mapHeight/2 - playerHalfHeight)
+
         cameraNode.position = player.position
+
+        let cameraHalfWidth = size.width / 2
+        let cameraHalfHeight = size.height / 2
+
+        // 🛡️ Clamp camera to world edges
+        cameraNode.position.x = min(max(cameraNode.position.x, -mapWidth/2 + cameraHalfWidth), mapWidth/2 - cameraHalfWidth)
+        cameraNode.position.y = min(max(cameraNode.position.y, -mapHeight/2 + cameraHalfHeight), mapHeight/2 - cameraHalfHeight)
 
         if moveDirection.dx != 0 || moveDirection.dy != 0 {
             stepCount += 1
@@ -273,16 +289,14 @@ class WorldScene: SKScene {
                 print("🎉 Earned XP! Total XP: \(playerXP)")
                 checkLevelUp()
             }
-            
+
             startWalkingAnimation()
 
-            // 👣 Flip player based on horizontal movement
             if moveDirection.dx < 0 {
                 player.xScale = -1.0
             } else if moveDirection.dx > 0 {
                 player.xScale = 1.0
             }
-
         } else {
             stopWalkingAnimation()
         }
