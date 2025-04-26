@@ -27,8 +27,38 @@ class WorldScene: SKScene {
     var bButtonNode: SKSpriteNode!
 
     let tileSize: CGFloat = 64
-    let columns = 50
-    let rows = 50
+    var columns: Int = 0
+    var rows: Int = 0
+    
+    // 🛡️ Tiles that are blocked and cannot be walked into
+    let blockedTiles: [(Int, Int)] = [
+        // Vertical wall (12,20) to (12,23)
+        (12,20), (12,21), (12,22), (12,23),
+        
+        // Vertical wall (13,20) to (13,23)
+        (13,20), (13,21), (13,22), (13,23),
+        
+        // Horizontal wall (9,23) to (8,23)
+        (9,23), (8,23),
+        
+        // Horizontal wall (9,25) to (8,25)
+        (9,25), (8,25),
+        
+        // Horizontal wall (19,21) to (20,21)
+        (19,21), (20,21),
+        
+        // Horizontal wall (19,19) to (20,19)
+        (19,19), (20,19),
+        
+        // Single blocked tile (19,18)
+        (19,18),
+        
+        // Long vertical wall (0,18) to (0,28)
+        (0,18), (0,19), (0,20), (0,21), (0,22),
+        (0,23), (0,24), (0,25), (0,26), (0,27), (0,28)
+    ]
+
+
 
     var stepCount = 0
     var playerXP: Int {
@@ -39,6 +69,24 @@ class WorldScene: SKScene {
         get { UserDefaults.standard.integer(forKey: "playerLevel") == 0 ? 1 : UserDefaults.standard.integer(forKey: "playerLevel") }
         set { UserDefaults.standard.set(newValue, forKey: "playerLevel") }
     }
+    
+    func setupTileMapFromImage(named imageName: String) {
+        let tileSize = CGSize(width: 64, height: 64)
+        let textures = MapSlicer.slice(imageNamed: imageName, tileSize: tileSize)
+
+        if let tileMap = TileMapBuilder.buildTileMap(from: textures, tileSize: tileSize) {
+            tileMap.zPosition = -10
+            addChild(tileMap)
+            self.tileMap = tileMap
+            
+            // ✅ Set columns and rows dynamically
+            self.columns = textures.first?.count ?? 0
+            self.rows = textures.count
+        }
+    }
+
+
+
 
     let xpMilestones = [1000, 2500, 5000, 10000, 20000]
 
@@ -66,9 +114,10 @@ class WorldScene: SKScene {
 
         NotificationCenter.default.addObserver(self, selector: #selector(handleMuteSettingChanged), name: .muteSettingChanged, object: nil)
 
-        setupTileMap()
-        setupPlayer()
-        setupNPC()
+        setupTileMapFromImage(named: "cityMap") // ✅ FIRST load the map
+
+        setupPlayer()  // ✅ THEN spawn player
+        setupNPC()     // ✅ THEN spawn NPC
         setupCamera()
         addDpad()
         setupDialogueBox()
@@ -105,24 +154,6 @@ class WorldScene: SKScene {
         }
     }
 
-    func setupTileMap() {
-        let tileSet = SKTileSet()
-        let grassTileGroup = SKTileGroup(tileDefinition: SKTileDefinition(texture: SKTexture(imageNamed: "tileGrass")))
-        tileSet.tileGroups = [grassTileGroup]
-
-        let map = SKTileMapNode(tileSet: tileSet, columns: columns, rows: rows, tileSize: CGSize(width: tileSize, height: tileSize))
-        map.anchorPoint = CGPoint(x: 0.5, y: 0.5)
-        map.position = .zero
-
-        for col in 0..<columns {
-            for row in 0..<rows {
-                map.setTileGroup(grassTileGroup, forColumn: col, row: row)
-            }
-        }
-
-        addChild(map)
-        self.tileMap = map
-    }
 
     func setupPlayer() {
         let idleTexture = SKTexture(imageNamed: "playerIdle")
@@ -130,15 +161,20 @@ class WorldScene: SKScene {
 
         player.texture = idleTexture
         player.size = CGSize(width: tileSize, height: tileSize)
-        player.position = CGPoint(x: 0, y: 0)
+        
+        // ✅ Correct spawn position
+        player.position = positionForTile(column: 12, row: 16)
         addChild(player)
     }
+
 
     func setupNPC() {
         npc = SKSpriteNode(imageNamed: "npcFacing1")
         npc.texture?.filteringMode = .nearest
-        npc.size = CGSize(width: tileSize * 0.85, height: tileSize * 0.85) // 👈 scale down
-        npc.position = CGPoint(x: tileSize * 5, y: tileSize * 5)
+        npc.size = CGSize(width: tileSize * 0.85, height: tileSize * 0.85)
+        
+        // ✅ Correct spawn position
+        npc.position = positionForTile(column: 19, row: 17)
         addChild(npc)
 
         dialogueLines = [
@@ -148,6 +184,8 @@ class WorldScene: SKScene {
             "Good luck, chef!"
         ]
     }
+
+
 
 
     func setupCamera() {
@@ -268,7 +306,17 @@ class WorldScene: SKScene {
         let mapWidth = tileSize * CGFloat(columns)
         let mapHeight = tileSize * CGFloat(rows)
 
-        // 🛡️ Clamp player inside actual map
+        // 🛡️ Blocked tile checking
+        let playerCol = Int((player.position.x + (tileSize * CGFloat(columns)) / 2 - 24) / tileSize)
+        let playerRow = Int((player.position.y + (tileSize * CGFloat(rows)) / 2) / tileSize) // ⚡ NO -24 here!
+
+        if blockedTiles.contains(where: { $0 == (playerCol, playerRow) }) {
+            player.position.x -= moveDirection.dx * 2.0
+            player.position.y -= moveDirection.dy * 2.0
+        }
+
+
+        // 🛡️ Clamp player inside map bounds
         player.position.x = min(max(player.position.x, -mapWidth/2 + playerHalfWidth), mapWidth/2 - playerHalfWidth)
         player.position.y = min(max(player.position.y, -mapHeight/2 + playerHalfHeight), mapHeight/2 - playerHalfHeight)
 
@@ -277,7 +325,7 @@ class WorldScene: SKScene {
         let cameraHalfWidth = size.width / 2
         let cameraHalfHeight = size.height / 2
 
-        // 🛡️ Clamp camera to world edges
+        // 🛡️ Clamp camera to map bounds
         cameraNode.position.x = min(max(cameraNode.position.x, -mapWidth/2 + cameraHalfWidth), mapWidth/2 - cameraHalfWidth)
         cameraNode.position.y = min(max(cameraNode.position.y, -mapHeight/2 + cameraHalfHeight), mapHeight/2 - cameraHalfHeight)
 
@@ -310,6 +358,7 @@ class WorldScene: SKScene {
     }
 
 
+
     @objc func handleMuteSettingChanged() {
         applyMuteSetting()
     }
@@ -328,5 +377,13 @@ extension CGPoint {
         let dx = x - point.x
         let dy = y - point.y
         return sqrt(dx * dx + dy * dy)
+    }
+}
+
+// ✅ Separate extension
+extension WorldScene {
+    func positionForTile(column: Int, row: Int) -> CGPoint {
+        guard let tileMap = tileMap else { return .zero }
+        return tileMap.centerOfTile(atColumn: column, row: row)
     }
 }
