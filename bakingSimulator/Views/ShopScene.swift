@@ -220,8 +220,19 @@ class ShopScene: SKScene {
     func leaveShop() {
         let worldScene = WorldScene(size: self.size)
         worldScene.scaleMode = .resizeFill
-        
+
+        // ✅ Set new spawn when exiting the shop
+        worldScene.initialPlayerTile = (column: 20, row: 18)
+
+        // ✅ Lock the door when re-entering world
+        worldScene.canEnterShop = false
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            worldScene.canEnterShop = true
+        }
+
         let transition = SKTransition.fade(withDuration: 1.0)
         self.view?.presentScene(worldScene, transition: transition)
     }
+
+
 }

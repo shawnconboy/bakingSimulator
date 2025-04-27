@@ -26,6 +26,9 @@ class WorldScene: SKScene {
     let tileSize: CGFloat = 64
     var columns: Int = 0
     var rows: Int = 0
+    
+    var canEnterShop = true
+
 
 
     
@@ -69,6 +72,9 @@ class WorldScene: SKScene {
         set { UserDefaults.standard.set(newValue, forKey: "playerLevel") }
     }
     
+    var initialPlayerTile: (column: Int, row: Int)? = nil
+
+    
     func setupTileMapFromImage(named imageName: String) {
         let tileSize = CGSize(width: 64, height: 64)
         let textures = MapSlicer.slice(imageNamed: imageName, tileSize: tileSize)
@@ -109,18 +115,22 @@ class WorldScene: SKScene {
             walkFrames.append(texture)
         }
 
-        
-
         NotificationCenter.default.addObserver(self, selector: #selector(handleMuteSettingChanged), name: .muteSettingChanged, object: nil)
 
         setupTileMapFromImage(named: "cityMap") // ✅ FIRST load the map
-
         setupPlayer()  // ✅ THEN spawn player
         setupNPC()     // ✅ THEN spawn NPC
         setupCamera()
         addDpad()
         setupDialogueBox()
+
+        // 🔥 Door lockout after shop exit
+        canEnterShop = false
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            self.canEnterShop = true
+        }
     }
+
 
     func startWalkingAnimation() {
         if player.action(forKey: "walking") == nil {
@@ -144,11 +154,18 @@ class WorldScene: SKScene {
 
         player.texture = idleTexture
         player.size = CGSize(width: tileSize, height: tileSize)
-        
-        // ✅ Correct spawn position
-        player.position = positionForTile(column: 12, row: 16)
+
+        if let spawnTile = initialPlayerTile {
+            // ✅ Custom spawn if coming from shop
+            player.position = positionForTile(column: spawnTile.column, row: spawnTile.row)
+        } else {
+            // ✅ Normal starting spawn
+            player.position = positionForTile(column: 13, row: 13)
+        }
+
         addChild(player)
     }
+
 
 
     func setupNPC() {
@@ -157,7 +174,7 @@ class WorldScene: SKScene {
         npc.size = CGSize(width: tileSize * 0.85, height: tileSize * 0.85)
         
         // ✅ Correct spawn position
-        npc.position = positionForTile(column: 19, row: 17)
+        npc.position = positionForTile(column: 14, row: 16)
         addChild(npc)
 
         dialogueLines = [
@@ -314,8 +331,11 @@ class WorldScene: SKScene {
         // 🎯 Door detection (automatic scene transfer)
         let doorPosition = positionForTile(column: 20, row: 19)
         if player.position.distance(to: doorPosition) < tileSize * 1.0 {
-            enterShop()
+            if canEnterShop {
+                enterShop()
+            }
         }
+
 
         // ✅ Walking animation
         if moveDirection.dx != 0 || moveDirection.dy != 0 {
