@@ -5,6 +5,11 @@ class WorldScene: SKScene {
     var tileMap: SKTileMapNode?
     let player = SKSpriteNode(imageNamed: "playerIdle")
     let cameraNode = SKCameraNode()
+    
+    var playerStartingPosition: CGPoint?
+    var lastPlayerTileBeforeShop: (column: Int, row: Int)? = nil
+
+
 
     var walkFrames: [SKTexture] = []
 
@@ -28,6 +33,10 @@ class WorldScene: SKScene {
     var rows: Int = 0
     
     var canEnterShop = true
+    
+    
+    
+
 
 
 
@@ -147,24 +156,24 @@ class WorldScene: SKScene {
         player.texture = idleTexture
     }
 
-
     func setupPlayer() {
-        let idleTexture = SKTexture(imageNamed: "playerIdle")
-        idleTexture.filteringMode = .nearest
-
-        player.texture = idleTexture
+        player.texture?.filteringMode = .nearest
         player.size = CGSize(width: tileSize, height: tileSize)
 
-        if let spawnTile = initialPlayerTile {
-            // ✅ Custom spawn if coming from shop
-            player.position = positionForTile(column: spawnTile.column, row: spawnTile.row)
+        if let startPos = playerStartingPosition {
+            player.position = startPos
+        } else if let lastTile = lastPlayerTileBeforeShop {
+            player.position = positionForTile(column: lastTile.column, row: lastTile.row)
         } else {
-            // ✅ Normal starting spawn
-            player.position = positionForTile(column: 13, row: 13)
+            player.position = CGPoint(x: tileSize * 2, y: tileSize * 2) // Default spawn
         }
 
         addChild(player)
     }
+
+
+
+
 
 
 
@@ -280,7 +289,6 @@ class WorldScene: SKScene {
                         currentDialogueIndex = 0
                     }
                 } else {
-                    // 🔥 If not currently interacting, check if close to NPC to restart dialogue
                     if player.position.distance(to: npc.position) < tileSize * 1.5 {
                         isInteracting = true
                         currentDialogueIndex = 0
@@ -288,7 +296,6 @@ class WorldScene: SKScene {
                     }
                 }
             }
-
         }
     }
 
@@ -385,14 +392,20 @@ class WorldScene: SKScene {
     }
 
     
-    
     func enterShop() {
         let shopScene = ShopScene(size: self.size)
         shopScene.scaleMode = .resizeFill
+        
+        if let tileMap = tileMap {
+            let col = tileMap.tileColumnIndex(fromPosition: player.position)
+            let row = tileMap.tileRowIndex(fromPosition: player.position)
+            shopScene.playerReturnTile = (col, row) // ✅ pass player tile to shop scene
+        }
 
         let transition = SKTransition.fade(withDuration: 1.0)
         self.view?.presentScene(shopScene, transition: transition)
     }
+
 }
 
 
@@ -412,5 +425,12 @@ extension WorldScene {
     func positionForTile(column: Int, row: Int) -> CGPoint {
         guard let tileMap = tileMap else { return .zero }
         return tileMap.centerOfTile(atColumn: column, row: row)
+    }
+    
+    func tileForPosition(_ position: CGPoint) -> (column: Int, row: Int) {
+        guard let tileMap = tileMap else { return (0, 0) }
+        let column = tileMap.tileColumnIndex(fromPosition: position)
+        let row = tileMap.tileRowIndex(fromPosition: position)
+        return (column, row)
     }
 }
