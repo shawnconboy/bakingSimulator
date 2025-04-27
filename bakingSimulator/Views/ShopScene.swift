@@ -15,13 +15,15 @@ class ShopScene: SKScene {
     var aButtonNode: SKSpriteNode!
     var bButtonNode: SKSpriteNode!
     
-    var moveDirection: CGVector = .zero // ✅ Declare only once (if you don't have it already)
-    
+    var moveDirection: CGVector = .zero
+    let tileSize: CGFloat = 64
+
     override func didMove(to view: SKView) {
-        backgroundColor = .white
+        backgroundColor = .black // ✅ black background
         anchorPoint = CGPoint(x: 0.5, y: 0.5)
         
-        // Setup player
+        setupTileMapFromImage(named: "shopMap") // ✅ your shop png here
+        
         let idleTexture = SKTexture(imageNamed: "playerIdle")
         idleTexture.filteringMode = .nearest
         player.texture = idleTexture
@@ -29,7 +31,6 @@ class ShopScene: SKScene {
         player.position = CGPoint(x: 0, y: 0)
         addChild(player)
         
-        // Setup walk frames
         for i in 1...4 {
             let textureName = "playerWalk\(i)"
             let texture = SKTexture(imageNamed: textureName)
@@ -37,12 +38,10 @@ class ShopScene: SKScene {
             walkFrames.append(texture)
         }
         
-        // Setup camera
         camera = cameraNode
         cameraNode.position = player.position
         addChild(cameraNode)
         
-        // Setup D-pad and buttons
         dpadNode = SKSpriteNode(imageNamed: "XboxSeriesX_Dpad")
         dpadNode.alpha = 0.8
         dpadNode.setScale(1.5)
@@ -65,6 +64,16 @@ class ShopScene: SKScene {
         cameraNode.addChild(bButtonNode)
     }
     
+    func setupTileMapFromImage(named imageName: String) {
+        let textures = MapSlicer.slice(imageNamed: imageName, tileSize: CGSize(width: 64, height: 64))
+        
+        if let tileMap = TileMapBuilder.buildTileMap(from: textures, tileSize: CGSize(width: 64, height: 64)) {
+            tileMap.zPosition = -10
+            addChild(tileMap)
+            self.tileMap = tileMap
+        }
+    }
+    
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         for touch in touches {
             let location = touch.location(in: cameraNode)
@@ -84,10 +93,6 @@ class ShopScene: SKScene {
             if aButtonNode.contains(location) {
                 print("🛒 Open Shop Menu (not built yet)")
             }
-            
-            if bButtonNode.contains(location) {
-                print("🚪 Leave Shop (not built yet)")
-            }
         }
     }
     
@@ -100,7 +105,18 @@ class ShopScene: SKScene {
         player.position.x += moveDirection.dx * speed
         player.position.y += moveDirection.dy * speed
         
-        cameraNode.position = player.position
+        // 🛡️ Clamp player inside map
+        if let tileMap = tileMap {
+            let playerHalfWidth = player.size.width / 2
+            let playerHalfHeight = player.size.height / 2
+            let mapWidth = tileMap.mapSize.width
+            let mapHeight = tileMap.mapSize.height
+            
+            player.position.x = min(max(player.position.x, -mapWidth/2 + playerHalfWidth), mapWidth/2 - playerHalfWidth)
+            player.position.y = min(max(player.position.y, -mapHeight/2 + playerHalfHeight), mapHeight/2 - playerHalfHeight)
+            
+            cameraNode.position = player.position
+        }
         
         if moveDirection.dx != 0 || moveDirection.dy != 0 {
             startWalkingAnimation()
@@ -112,6 +128,14 @@ class ShopScene: SKScene {
             }
         } else {
             stopWalkingAnimation()
+        }
+        
+        // 🚪 Door detection
+        let doorTile = CGPoint(x: tileSize * 3 - tileSize * 2, y: -tileSize * 2) // Adjust depending on door location
+        if player.position.distance(to: doorTile) < tileSize / 2 {
+            if moveDirection.dy < 0 { // Must be pressing downward
+                leaveShop()
+            }
         }
     }
     
@@ -128,5 +152,13 @@ class ShopScene: SKScene {
         let idleTexture = SKTexture(imageNamed: "playerIdle")
         idleTexture.filteringMode = .nearest
         player.texture = idleTexture
+    }
+    
+    func leaveShop() {
+        let worldScene = WorldScene(size: self.size)
+        worldScene.scaleMode = .resizeFill
+        
+        let transition = SKTransition.fade(withDuration: 1.0)
+        self.view?.presentScene(worldScene, transition: transition)
     }
 }
