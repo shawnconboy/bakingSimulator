@@ -6,9 +6,6 @@ class WorldScene: SKScene {
     let player = SKSpriteNode(imageNamed: "playerIdle")
     let cameraNode = SKCameraNode()
 
-    var backgroundMusicPlayer: AVAudioPlayer?
-    let backgroundTracks = ["lofi1", "lofi2", "lofi3", "lofi4"]
-
     var walkFrames: [SKTexture] = []
 
     var dpadNode: SKSpriteNode!
@@ -112,7 +109,7 @@ class WorldScene: SKScene {
             walkFrames.append(texture)
         }
 
-        playBackgroundMusic()
+        
 
         NotificationCenter.default.addObserver(self, selector: #selector(handleMuteSettingChanged), name: .muteSettingChanged, object: nil)
 
@@ -138,22 +135,6 @@ class WorldScene: SKScene {
         let idleTexture = SKTexture(imageNamed: "playerIdle")
         idleTexture.filteringMode = .nearest
         player.texture = idleTexture
-    }
-
-    func playBackgroundMusic() {
-        if let randomTrack = backgroundTracks.randomElement(),
-           let url = Bundle.main.url(forResource: randomTrack, withExtension: "mp3") {
-            do {
-                backgroundMusicPlayer = try AVAudioPlayer(contentsOf: url)
-                backgroundMusicPlayer?.numberOfLoops = -1
-                backgroundMusicPlayer?.prepareToPlay()
-                backgroundMusicPlayer?.play()
-
-                applyMuteSetting()
-            } catch {
-                print("🎵 Error loading background music: \(error)")
-            }
-        }
     }
 
 
@@ -377,11 +358,12 @@ class WorldScene: SKScene {
 
     func applyMuteSetting() {
         if UserDefaults.standard.bool(forKey: "isMusicMuted") {
-            backgroundMusicPlayer?.volume = 0
+            MusicManager.shared.setVolume(0.0)
         } else {
-            backgroundMusicPlayer?.volume = 0.5
+            MusicManager.shared.setVolume(0.5)
         }
     }
+
     
     
     func enterShop() {

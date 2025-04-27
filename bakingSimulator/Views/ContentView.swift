@@ -8,7 +8,7 @@ struct ContentView: View {
                     Label("World", systemImage: "globe")
                 }
 
-            HomeView() // ✅ NOT Text("Home View") — this is your real HomeView now
+            HomeView()
                 .tabItem {
                     Label("Home", systemImage: "house")
                 }
@@ -27,6 +27,9 @@ struct ContentView: View {
                 .tabItem {
                     Label("Settings", systemImage: "gearshape")
                 }
+        }
+        .onAppear {
+            MusicManager.shared.startBackgroundMusic() // ✅ Start music once when app appears
         }
     }
 }

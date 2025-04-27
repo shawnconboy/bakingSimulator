@@ -1,13 +1,9 @@
 import SpriteKit
-import AVFoundation
 
 class ShopScene: SKScene {
     var tileMap: SKTileMapNode?
     let player = SKSpriteNode(imageNamed: "playerIdle")
     let cameraNode = SKCameraNode()
-    
-    var backgroundMusicPlayer: AVAudioPlayer?
-    let backgroundTracks = ["lofi1", "lofi2", "lofi3", "lofi4"]
     
     var walkFrames: [SKTexture] = []
     
@@ -17,12 +13,14 @@ class ShopScene: SKScene {
     
     var moveDirection: CGVector = .zero
     let tileSize: CGFloat = 64
+    
+    var collisionRects: [CGRect] = []
 
     override func didMove(to view: SKView) {
-        backgroundColor = .black // ✅ black background
+        backgroundColor = .black
         anchorPoint = CGPoint(x: 0.5, y: 0.5)
         
-        setupTileMapFromImage(named: "shopMap") // ✅ your shop png here
+        setupTileMapFromImage(named: "shopMap")
         
         let idleTexture = SKTexture(imageNamed: "playerIdle")
         idleTexture.filteringMode = .nearest
@@ -71,6 +69,53 @@ class ShopScene: SKScene {
             tileMap.zPosition = -10
             addChild(tileMap)
             self.tileMap = tileMap
+            
+            // 🧱 Setup collision boundaries
+            let tileOrigin = CGPoint(x: -tileMap.mapSize.width / 2, y: -tileMap.mapSize.height / 2)
+            
+            // (1,1) to (1,5)
+            for row in 1...5 {
+                let rect = CGRect(
+                    x: tileOrigin.x + CGFloat(1) * tileSize,
+                    y: tileOrigin.y + CGFloat(row) * tileSize,
+                    width: tileSize,
+                    height: tileSize
+                )
+                collisionRects.append(rect)
+            }
+            
+            // (3,6) to (3,7)
+            for row in 6...7 {
+                let rect = CGRect(
+                    x: tileOrigin.x + CGFloat(3) * tileSize,
+                    y: tileOrigin.y + CGFloat(row) * tileSize,
+                    width: tileSize,
+                    height: tileSize
+                )
+                collisionRects.append(rect)
+            }
+            
+            // (5,6) to (5,7)
+            for row in 6...7 {
+                let rect = CGRect(
+                    x: tileOrigin.x + CGFloat(5) * tileSize,
+                    y: tileOrigin.y + CGFloat(row) * tileSize,
+                    width: tileSize,
+                    height: tileSize
+                )
+                collisionRects.append(rect)
+            }
+            
+            // 🔴 Optional debug: visualize collision areas
+            /*
+            for rect in collisionRects {
+                let debugNode = SKShapeNode(rect: rect)
+                debugNode.strokeColor = .red
+                debugNode.lineWidth = 2
+                debugNode.zPosition = 100
+                addChild(debugNode)
+            }
+            */
         }
     }
     
@@ -130,11 +175,29 @@ class ShopScene: SKScene {
             stopWalkingAnimation()
         }
         
-        // 🚪 Door detection
-        let doorTile = CGPoint(x: tileSize * 3 - tileSize * 2, y: -tileSize * 2) // Adjust depending on door location
+        // 🚪 Door detection (lowered)
+        let doorTile = CGPoint(x: tileSize * 3 - tileSize * 2, y: -tileSize * 3)
         if player.position.distance(to: doorTile) < tileSize / 2 {
-            if moveDirection.dy < 0 { // Must be pressing downward
+            if moveDirection.dy < 0 {
                 leaveShop()
+            }
+        }
+        
+        // 🔥 Collision against walls
+        for rect in collisionRects {
+            if player.frame.intersects(rect) {
+                if moveDirection.dx > 0 {
+                    player.position.x = rect.minX - player.size.width / 2
+                }
+                if moveDirection.dx < 0 {
+                    player.position.x = rect.maxX + player.size.width / 2
+                }
+                if moveDirection.dy > 0 {
+                    player.position.y = rect.minY - player.size.height / 2
+                }
+                if moveDirection.dy < 0 {
+                    player.position.y = rect.maxY + player.size.height / 2
+                }
             }
         }
     }
