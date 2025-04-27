@@ -29,6 +29,8 @@ class WorldScene: SKScene {
     let tileSize: CGFloat = 64
     var columns: Int = 0
     var rows: Int = 0
+
+
     
     // 🛡️ Tiles that are blocked and cannot be walked into
     let blockedTiles: [(Int, Int)] = [
@@ -308,15 +310,14 @@ class WorldScene: SKScene {
 
         // 🛡️ Blocked tile checking
         let playerCol = Int((player.position.x + (tileSize * CGFloat(columns)) / 2 - 24) / tileSize)
-        let playerRow = Int((player.position.y + (tileSize * CGFloat(rows)) / 2) / tileSize) // ⚡ NO -24 here!
+        let playerRow = Int((player.position.y + (tileSize * CGFloat(rows)) / 2) / tileSize)
 
         if blockedTiles.contains(where: { $0 == (playerCol, playerRow) }) {
             player.position.x -= moveDirection.dx * 2.0
             player.position.y -= moveDirection.dy * 2.0
         }
 
-
-        // 🛡️ Clamp player inside map bounds
+        // 🛡️ Clamp player inside actual map
         player.position.x = min(max(player.position.x, -mapWidth/2 + playerHalfWidth), mapWidth/2 - playerHalfWidth)
         player.position.y = min(max(player.position.y, -mapHeight/2 + playerHalfHeight), mapHeight/2 - playerHalfHeight)
 
@@ -325,10 +326,17 @@ class WorldScene: SKScene {
         let cameraHalfWidth = size.width / 2
         let cameraHalfHeight = size.height / 2
 
-        // 🛡️ Clamp camera to map bounds
+        // 🛡️ Clamp camera to world edges
         cameraNode.position.x = min(max(cameraNode.position.x, -mapWidth/2 + cameraHalfWidth), mapWidth/2 - cameraHalfWidth)
         cameraNode.position.y = min(max(cameraNode.position.y, -mapHeight/2 + cameraHalfHeight), mapHeight/2 - cameraHalfHeight)
 
+        // 🎯 Door detection (automatic scene transfer)
+        let doorPosition = positionForTile(column: 20, row: 19)
+        if player.position.distance(to: doorPosition) < tileSize * 1.0 {
+            enterShop()
+        }
+
+        // ✅ Walking animation
         if moveDirection.dx != 0 || moveDirection.dy != 0 {
             stepCount += 1
             if stepCount >= 100 {
@@ -349,6 +357,7 @@ class WorldScene: SKScene {
             stopWalkingAnimation()
         }
 
+        // ✅ NPC dialogue pop-up
         if !isInteracting && !hasSeenNPC && player.position.distance(to: npc.position) < tileSize * 1.5 {
             showDialogue(text: dialogueLines[0])
             isInteracting = true
@@ -356,8 +365,11 @@ class WorldScene: SKScene {
             currentDialogueIndex = 0
         }
     }
+    
+    
 
-
+    
+    
 
     @objc func handleMuteSettingChanged() {
         applyMuteSetting()
@@ -370,7 +382,20 @@ class WorldScene: SKScene {
             backgroundMusicPlayer?.volume = 0.5
         }
     }
+    
+    
+    func enterShop() {
+        let shopScene = ShopScene(size: self.size)
+        shopScene.scaleMode = .resizeFill
+
+        let transition = SKTransition.fade(withDuration: 1.0)
+        self.view?.presentScene(shopScene, transition: transition)
+    }
 }
+
+
+
+
 
 extension CGPoint {
     func distance(to point: CGPoint) -> CGFloat {
