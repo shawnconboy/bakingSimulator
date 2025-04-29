@@ -2,14 +2,16 @@ import SpriteKit
 import AVFoundation
 
 class WorldScene: SKScene {
+    
+    var openShopMenuAction: (() -> Void)?
+    var enterShopAction: (() -> Void)? // ✅ NEW
+
+
     var tileMap: SKTileMapNode?
     let player = SKSpriteNode(imageNamed: "playerIdle")
     let cameraNode = SKCameraNode()
-    
-    var playerStartingPosition: CGPoint?
-    var lastPlayerTileBeforeShop: (column: Int, row: Int)? = nil
 
-
+    var playerStartingTile: (column: Int, row: Int)?
 
     var walkFrames: [SKTexture] = []
 
@@ -33,7 +35,9 @@ class WorldScene: SKScene {
     var rows: Int = 0
     
     var canEnterShop = true
-    
+    var hasEnteredShop = false
+    let doorTile = CGPoint(x: 64, y: -192) // tileSize * 3 - tileSize * 2, -tileSize * 3
+
     
     
 
@@ -92,7 +96,8 @@ class WorldScene: SKScene {
             tileMap.zPosition = -10
             addChild(tileMap)
             self.tileMap = tileMap
-            
+            // Share the tile map for grid-based placement
+            SpriteSceneManager.sharedWorldTileMap = tileMap
             // ✅ Set columns and rows dynamically
             self.columns = textures.first?.count ?? 0
             self.rows = textures.count
@@ -124,21 +129,27 @@ class WorldScene: SKScene {
             walkFrames.append(texture)
         }
 
-        NotificationCenter.default.addObserver(self, selector: #selector(handleMuteSettingChanged), name: .muteSettingChanged, object: nil)
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleMuteSettingChanged),
+            name: .muteSettingChanged,
+            object: nil
+        )
 
-        setupTileMapFromImage(named: "cityMap") // ✅ FIRST load the map
-        setupPlayer()  // ✅ THEN spawn player
-        setupNPC()     // ✅ THEN spawn NPC
-        setupCamera()
-        addDpad()
-        setupDialogueBox()
+        setupTileMapFromImage(named: "cityMap") // ✅ First load the map
+        setupPlayer()                           // ✅ Then spawn player at correct position
+        setupCamera()                           // ✅ Camera follows the player immediately
+        setupNPC()                              // ✅ Then place NPCs
+        addDpad()                               // ✅ Then add controls
+        setupDialogueBox()                      // ✅ Then add dialogue UI
 
-        // 🔥 Door lockout after shop exit
+        // 🔥 DOOR LOCKOUT must happen AFTER player is positioned
         canEnterShop = false
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
             self.canEnterShop = true
         }
     }
+
 
 
     func startWalkingAnimation() {
@@ -160,16 +171,15 @@ class WorldScene: SKScene {
         player.texture?.filteringMode = .nearest
         player.size = CGSize(width: tileSize, height: tileSize)
 
-        if let startPos = playerStartingPosition {
-            player.position = startPos
-        } else if let lastTile = lastPlayerTileBeforeShop {
-            player.position = positionForTile(column: lastTile.column, row: lastTile.row)
+        if let startTile = playerStartingTile, let tileMap = tileMap {
+            player.position = tileMap.centerOfTile(atColumn: startTile.column, row: startTile.row)
         } else {
             player.position = CGPoint(x: tileSize * 2, y: tileSize * 2) // Default spawn
         }
 
         addChild(player)
     }
+
 
 
 
@@ -289,10 +299,11 @@ class WorldScene: SKScene {
                         currentDialogueIndex = 0
                     }
                 } else {
-                    if player.position.distance(to: npc.position) < tileSize * 1.5 {
-                        isInteracting = true
-                        currentDialogueIndex = 0
-                        showDialogue(text: dialogueLines[currentDialogueIndex])
+                    if !hasEnteredShop && player.position.distance(to: doorTile) < tileSize * 0.8 {
+                        if canEnterShop {
+                            hasEnteredShop = true
+                            enterShopAction?()
+                        }
                     }
                 }
             }
@@ -307,6 +318,8 @@ class WorldScene: SKScene {
         let speed: CGFloat = 2.0
         player.position.x += moveDirection.dx * speed
         player.position.y += moveDirection.dy * speed
+        
+
 
         let playerHalfWidth = player.size.width / 2
         let playerHalfHeight = player.size.height / 2
@@ -337,11 +350,14 @@ class WorldScene: SKScene {
 
         // 🎯 Door detection (automatic scene transfer)
         let doorPosition = positionForTile(column: 20, row: 19)
-        if player.position.distance(to: doorPosition) < tileSize * 1.0 {
+        if player.position.distance(to: doorPosition) < tileSize * 0.8 {
             if canEnterShop {
-                enterShop()
+                enterShopAction?() // ✅ Call closure
             }
         }
+
+
+
 
 
         // ✅ Walking animation
@@ -389,21 +405,6 @@ class WorldScene: SKScene {
         } else {
             MusicManager.shared.setVolume(0.5)
         }
-    }
-
-    
-    func enterShop() {
-        let shopScene = ShopScene(size: self.size)
-        shopScene.scaleMode = .resizeFill
-        
-        if let tileMap = tileMap {
-            let col = tileMap.tileColumnIndex(fromPosition: player.position)
-            let row = tileMap.tileRowIndex(fromPosition: player.position)
-            shopScene.playerReturnTile = (col, row) // ✅ pass player tile to shop scene
-        }
-
-        let transition = SKTransition.fade(withDuration: 1.0)
-        self.view?.presentScene(shopScene, transition: transition)
     }
 
 }

@@ -3,10 +3,12 @@ import Foundation
 class InventoryManager: ObservableObject {
     static let shared = InventoryManager()
 
-    @Published var money: Int = 0
+    @Published var money: Int
     @Published var items: [String: Int] = [:]
 
-    private init() { }
+    private init() {
+        money = 100
+    }
 
     func addItem(_ item: String, quantity: Int = 1) {
         items[item, default: 0] += quantity
@@ -30,4 +32,12 @@ class InventoryManager: ObservableObject {
     func earnMoney(_ amount: Int) {
         money += amount
     }
+
+    // Atomic purchase function for use in shop and Unity
+    func purchaseItem(item: String, price: Int, quantity: Int = 1) {
+        guard money >= price * quantity else { return }
+        money -= price * quantity
+        addItem(item, quantity: quantity)
+    }
 }
+
